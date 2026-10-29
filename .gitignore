@@ -1,0 +1,48 @@
+# Secrets and environment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local databases and generated data
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+uploads/
+instance/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local configuration containing credentials
+app/config/app.ini
+
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
+
+# Local database exports
+*.sql.bak
+*.dump
+*.backup
+
+# Potentially sensitive production data export
+seed/seed.sql

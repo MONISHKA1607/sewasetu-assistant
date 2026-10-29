@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: sewasetu
+      POSTGRES_USER: sewasetu
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./app/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./seed/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+
+  app:
+    build: ./app
+    ports:
+      - "8000:8000"
+    environment:
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-before-deploying}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      # The address at which people reach this portal.
+      # Use the public URL when deployed.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+    depends_on:
+      - db
+      - smsgw
+    volumes:
+      - uploads:/var/sewasetu/uploads
+      - applogs:/var/log/sewasetu
+
+  mcp-citizen:
+    build:
+      context: .
+      dockerfile: mcp_service/Dockerfile
+    command: ["python", "citizen_server.py"]
+    ports:
+      - "8101:8101"
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      PORT: "8101"
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    depends_on:
+      - db
+      - app
+    volumes:
+      - uploads:/var/sewasetu/uploads:ro
+
+  scheduler:
+    build: ./app
+    # Run deemed approval at startup, then run cron nightly.
+    command: ["sh", "-c", "until python /app/scripts/deemed_approval.py; do sleep 5; done; exec cron -f"]
+    depends_on:
+      - db
+    volumes:
+      - applogs:/var/log/sewasetu
+
+  smsgw:
+    build: ./smsgw
+    # Internal service; the app accesses it over the Docker network.
+    expose:
+      - "8025"
+
+volumes:
+  pgdata:
+  uploads:
+  applogs:

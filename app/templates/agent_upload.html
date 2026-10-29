@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+{% if done %}
+<h2>Document received</h2>
+<p>Thank you. Your age proof for mobile {{ mobile }} has been saved. You can go back to your
+assistant and tell it the document is uploaded.</p>
+{% elif mobile is none %}
+<h2>This link has expired or was already used</h2>
+<p>Please ask your assistant for a new upload link.</p>
+{% else %}
+<h2>Upload Age Proof Document</h2>
+<p class="note">For the application on mobile <b>{{ mobile }}</b>. Accepted: birth certificate, school
+leaving certificate or Voter ID. Formats: <b>JPG, PNG or PDF, maximum 5 MB</b>.</p>
+{% if error %}<div class="flash">{{ error }}</div>{% endif %}
+<form method="post" enctype="multipart/form-data">
+  <label>Select Document</label>
+  <input type="file" name="document">
+  <p><button class="btn" type="submit">Upload</button></p>
+</form>
+{% endif %}
+{% endblock %}

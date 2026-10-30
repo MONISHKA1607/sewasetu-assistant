@@ -27,6 +27,7 @@ from portal_auth import PortalTokenVerifier, ISSUER, subject_from_token
 logging.basicConfig(level=logging.INFO)
 PATH = "/mcp/citizen"
 RESOURCE = ISSUER + PATH
+logging.warning("citizen endpoint expects audience=%s issuer=%s", RESOURCE, ISSUER)
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/var/sewasetu/uploads")
 
 mcp = FastMCP(
@@ -61,7 +62,6 @@ def _mobile():
     if not sub.startswith("citizen:"):
         raise PermissionError("not signed in as a citizen")
     return sub.split(":", 1)[1]
-
 
 def _mask(m):
     return "XXXXXX" + m[-4:]

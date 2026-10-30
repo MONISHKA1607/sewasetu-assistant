@@ -12,6 +12,8 @@ MOBILE = sys.argv[1] if len(sys.argv) > 1 else "9876500001"
 
 async def call(sess, name, **kw):
     r = await sess.call_tool(name, kw)
+    if r.isError or not (r.structuredContent or r.content[0].text.strip().startswith("{")):
+        print("\nTOOL ERROR from", name, "->", r.content[0].text if r.content else r); raise SystemExit(1)
     out = r.structuredContent or json.loads(r.content[0].text)
     print("\n>>", name, kw); print(json.dumps(out, indent=1, ensure_ascii=False)[:900]); return out
 

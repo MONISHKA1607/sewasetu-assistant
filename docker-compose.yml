@@ -1,10 +1,12 @@
 services:
   db:
     image: postgres:15
+    ports:
+      - "127.0.0.1:5433:5432"   # localhost only, so tests/smoke_officer.py can read the DB
     environment:
       POSTGRES_DB: sewasetu
       POSTGRES_USER: sewasetu
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_PASSWORD: sewasetu123
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./app/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -17,10 +19,8 @@ services:
     environment:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-before-deploying}
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-      # The address at which people reach this portal.
-      # Use the public URL when deployed.
+      # the address at which people reach this portal; stamped into sign-in tokens and
+      # discovery documents, so it must be the public one when deployed
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
     depends_on:
       - db
@@ -35,20 +35,34 @@ services:
       dockerfile: mcp_service/Dockerfile
     command: ["python", "citizen_server.py"]
     ports:
-      - "8101:8101"
+      - "8101:8101"          # local testing; in production only the HTTPS proxy is exposed
     environment:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       PORT: "8101"
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     depends_on:
       - db
       - app
     volumes:
       - uploads:/var/sewasetu/uploads:ro
 
+  mcp-officer:
+    build:
+      context: .
+      dockerfile: mcp_service/Dockerfile
+    command: ["python", "officer_server.py"]
+    ports:
+      - "8102:8102"          # local testing; in production only the HTTPS proxy is exposed
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      PORT: "8102"
+    depends_on:
+      - db
+      - app
+
   scheduler:
     build: ./app
-    # Run deemed approval at startup, then run cron nightly.
+    # Run the deemed-approval job once at startup (so a freshly restored
+    # database is brought up to date), then hand over to cron for the nightly run.
     command: ["sh", "-c", "until python /app/scripts/deemed_approval.py; do sleep 5; done; exec cron -f"]
     depends_on:
       - db
@@ -57,7 +71,8 @@ services:
 
   smsgw:
     build: ./smsgw
-    # Internal service; the app accesses it over the Docker network.
+    # internal only — reached by the app over the docker network and exposed to
+    # users via the app at /__gateway/ (so no second host port is needed)
     expose:
       - "8025"
 

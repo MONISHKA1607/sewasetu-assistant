@@ -216,7 +216,7 @@ def submit_application(cur, mobile, data, doc_path, channel="web", idem_key=None
 
 
 # --------------------------------------------------------------------------- decisions
-def decide_application(cur, app_id, new_status, actor, note="", require_reason=False):
+def decide_application(cur, app_id, new_status, actor, note="", require_reason=False, actor_label="admin"):
     """Approve/reject a PENDING application. Caller commits.
     actor is e.g. 'admin' / 'officer-name'. Returns (ok, message, application_no)."""
     if new_status not in ("APPROVED", "REJECTED"):
@@ -230,7 +230,7 @@ def decide_application(cur, app_id, new_status, actor, note="", require_reason=F
     row = cur.fetchone()
     if not row:
         return False, "only a pending application can be decided", None
-    write_audit(cur, app_id, new_status, "admin:%s" % actor, note)
+    write_audit(cur, app_id, new_status, "%s:%s" % (actor_label, actor), note)
     return True, "ok", row[0]
 
 

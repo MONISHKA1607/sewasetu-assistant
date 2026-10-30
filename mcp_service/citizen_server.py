@@ -22,7 +22,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from psycopg2.extras import Json
 
 import service
-from portal_auth import PortalTokenVerifier, ISSUER
+from portal_auth import PortalTokenVerifier, ISSUER, subject_from_token
 
 logging.basicConfig(level=logging.INFO)
 PATH = "/mcp/citizen"
@@ -57,9 +57,10 @@ SHOULD_ASK = [("ifsc", "bank IFSC code (11 characters, printed on the passbook)"
 # ------------------------------------------------------------------ helpers
 def _mobile():
     tok = get_access_token()
-    if not tok or not (tok.subject or "").startswith("citizen:"):
+    sub = subject_from_token(tok) if tok else ""
+    if not sub.startswith("citizen:"):
         raise PermissionError("not signed in as a citizen")
-    return tok.subject.split(":", 1)[1]
+    return sub.split(":", 1)[1]
 
 
 def _mask(m):

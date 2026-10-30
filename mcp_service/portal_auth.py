@@ -6,7 +6,7 @@ A token is accepted only if: RS256 signature checks out against the portal's pub
 `scope` match the endpoint's role, and the sign-in (`sid`) has not been ended by the person.
 """
 import os
-import json
+import time
 import logging
 
 import jwt
@@ -60,23 +60,33 @@ class PortalTokenVerifier:
                                 audience=self.resource_url, issuer=ISSUER,
                                 options={"require": ["exp", "iss", "aud", "sub"]})
         except Exception as e:
-            log.info("token rejected: %s", type(e).__name__)
+            log.warning("TOKEN REJECTED at verification: %r", e)
             return None
         if claims.get("role") != self.role or claims.get("scope") != self.role:
-            log.info("token rejected: wrong role %s for %s endpoint", claims.get("role"), self.role)
+            log.warning("TOKEN REJECTED: role=%r scope=%r but this endpoint is %r", claims.get("role"), claims.get("scope"), self.role)
             return None
         if not str(claims.get("sub", "")).startswith(self.role + ":"):
+            log.warning("TOKEN REJECTED: subject %r is not a %s", claims.get("sub"), self.role)
             return None
         try:
             if claims.get("kind") == "program":
                 if _program_token_revoked(claims.get("jti")):
+                    log.warning("TOKEN REJECTED: program token revoked or unknown")
                     return None
             elif _revoked(claims.get("sid")):
-                log.info("token rejected: sign-in ended")
+                log.warning("TOKEN REJECTED: this sign-in was ended")
                 return None
         except Exception:
             log.exception("revocation check failed; refusing token")
             return None
+        log.info("TOKEN VERIFIED sub=%s expires_in=%ss", claims.get("sub"), int(claims["exp"] - time.time()))
         return AccessToken(token=token, client_id=claims.get("client_id", ""), scopes=[claims["scope"]],
-                           expires_at=claims["exp"], resource=self.resource_url,
-                           subject=claims["sub"], claims=claims)
+                           expires_at=claims["exp"], resource=self.resource_url)
+
+
+def subject_from_token(tok):
+    """Identity of the caller. The token was already verified by PortalTokenVerifier."""
+    try:
+        return jwt.decode(tok.token, options={"verify_signature": False}).get("sub", "")
+    except Exception:
+        return ""

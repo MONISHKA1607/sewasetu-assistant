@@ -2,3 +2,4 @@ mcp==1.30.0
 psycopg2-binary==2.9.9
 PyJWT[crypto]>=2.10.1
 uvicorn>=0.30
+requests>=2.31

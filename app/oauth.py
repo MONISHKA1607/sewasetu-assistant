@@ -159,6 +159,17 @@ def as_metadata():
     })
 
 
+@oauth.get("/.well-known/oauth-protected-resource/mcp/<which>")
+def protected_resource(which):
+    """RFC 9728 metadata for each MCP endpoint, served here so `authorization_servers` is EXACTLY the
+    issuer string (the MCP library would normalise it with a trailing slash, which strict clients reject)."""
+    if which not in ("citizen", "officer"):
+        abort(404)
+    return jsonify({"resource": ISSUER + "/mcp/" + which, "authorization_servers": [ISSUER],
+                    "scopes_supported": [which], "bearer_methods_supported": ["header"],
+                    "resource_name": "Sewa Setu %s assistant" % which})
+
+
 @oauth.get("/.well-known/jwks.json")
 def jwks():
     return jsonify(public_jwks())

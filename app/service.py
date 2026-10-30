@@ -60,9 +60,26 @@ def write_audit(cur, app_id, action, actor, note=""):
 
 
 # --------------------------------------------------------------------------- schema
-def ensure_schema():
-    """Idempotent migrations: docker initdb scripts run only on a fresh volume."""
+def ensure_schema(retries=40, delay=3):
+    """Idempotent migrations, retried until the database is ready (a fresh volume takes minutes to seed)."""
+    import time
+    last = None
+    for _ in range(retries):
+        try:
+            return _ensure_schema_once()
+        except Exception as e:      # db not up yet, seed still loading, or another process mid-migration
+            last = e
+            time.sleep(delay)
+    raise last
+
+
+def _ensure_schema_once():
+    """docker initdb scripts run only on a fresh volume, so new tables are created here."""
     conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT pg_advisory_xact_lock(7777)")
+    cur.execute("SELECT to_regclass('public.oauth_refresh_tokens'), to_regclass('public.applications')")
+    if not all(cur.fetchone()):
+        raise RuntimeError("base schema not loaded yet")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS agent_drafts (
             mobile VARCHAR(15) PRIMARY KEY, data JSONB, doc_path VARCHAR(200), updated_at TIMESTAMP);
@@ -78,6 +95,8 @@ def ensure_schema():
             transcript JSONB, tool_calls JSONB, assertions JSONB, note TEXT);
     """)
     cur.execute("""
+        ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS run_id VARCHAR(30);
+        ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS driver VARCHAR(20);
         ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS sid VARCHAR(32);
         CREATE TABLE IF NOT EXISTS revoked_sessions (sid VARCHAR(32) PRIMARY KEY, revoked_at TIMESTAMP);
     """)

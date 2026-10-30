@@ -593,6 +593,55 @@ def admin_reject(app_id):
     return _admin_decide(app_id, "REJECTED", request.form.get("note", ""))
 
 
+
+# ---------------------------------------------------------------------------
+# Public, read-only evaluation dashboard. Shows what was run against the live assistants and what the
+# DATABASE said afterwards. Nothing sensitive is stored in eval_runs (tokens, links and bank numbers are
+# redacted by the runner).
+# ---------------------------------------------------------------------------
+
+EVAL_FINDINGS = [
+    ("Duplicate rule missing from the shared path", "found while reading the code before building",
+     "The one-active-application check lived only in the web route, not in validate/create, so a naive "
+     "assistant path would have created duplicates. Fixed: every channel now goes through service.submit_application "
+     "(advisory lock per mobile + active check)."),
+    ("Retry after a lost response said 'no saved details'", "found by the first end-to-end test",
+     "The first submit consumed the draft, so a retried submit could not find it and the assistant could not tell the "
+     "citizen the number. Fixed: a retry returns the same application number; verified with simultaneous submits."),
+    ("Ending a sign-in left the access token alive for 20 minutes", "found reading oauth.py for the kiosk case",
+     "Revoking only cut the refresh token. Fixed: each sign-in has a session id; the MCP servers refuse a revoked "
+     "session immediately (check: shared_kiosk)."),
+    ("Application numbers were random with no uniqueness check", "found reading create_application",
+     "Collision was possible with 100k rows. Fixed: unique index plus retry until unused."),
+    ("Fresh database races the schema setup", "found on a clean deployment",
+     "The portal tried its migration once, before the seed finished loading. Fixed: migration now retries until ready."),
+]
+
+
+@app.route("/eval-dashboard")
+def eval_dashboard():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT run_id, min(run_at), count(*), sum(CASE WHEN passed THEN 1 ELSE 0 END) FROM eval_runs "
+                "GROUP BY run_id ORDER BY min(run_at) DESC LIMIT 20")
+    runs = cur.fetchall()
+    sel = request.args.get("run") or (runs[0][0] if runs else None)
+    role = request.args.get("role", "")
+    only = request.args.get("only", "")
+    rows = []
+    if sel:
+        cur.execute("SELECT scenario, persona, role, goal, passed, failure_category, transcript, tool_calls, "
+                    "assertions, note, run_at, driver FROM eval_runs WHERE run_id = %s ORDER BY id", (sel,))
+        rows = cur.fetchall()
+    cur.close(); conn.close()
+    total_checks = sum(len(r[8] or []) for r in rows)
+    passed_checks = sum(1 for r in rows for c in (r[8] or []) if c["passed"])
+    critical_failed = sum(1 for r in rows for c in (r[8] or []) if not c["passed"] and c.get("category") == "critical")
+    shown = [r for r in rows if (not role or r[2] == role) and
+             (only != "failed" or not r[4]) and (only != "passed" or r[4])]
+    return render_template("eval_dashboard.html", runs=runs, sel=sel, rows=shown, role=role, only=only,
+                           n_pass=sum(1 for r in rows if r[4]), n_all=len(rows), total_checks=total_checks,
+                           passed_checks=passed_checks, critical_failed=critical_failed, findings=EVAL_FINDINGS)
+
 try:
     ensure_schema()
 except Exception as _e:

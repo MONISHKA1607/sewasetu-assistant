@@ -1,0 +1,44 @@
+# Production overlay. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Only Caddy (80/443) is reachable from the internet; everything else stays on the private network.
+services:
+  db:
+    ports: !reset []
+    restart: unless-stopped
+  app:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+  mcp-citizen:
+    ports: !reset []
+    restart: unless-stopped
+  mcp-officer:
+    ports: !reset []
+    restart: unless-stopped
+  scheduler:
+    restart: unless-stopped
+  smsgw:
+    restart: unless-stopped
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+      - mcp-citizen
+      - mcp-officer
+
+volumes:
+  caddy_data:
+  caddy_config:

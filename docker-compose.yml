@@ -59,6 +59,27 @@ services:
       - db
       - app
 
+  evals:
+    # not started by default; run on demand:  docker compose ... --profile evals run --rm evals
+    profiles: ["evals"]
+    build:
+      context: .
+      dockerfile: mcp_service/Dockerfile
+    working_dir: /app
+    command: ["python", "evals/run_evals.py"]
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      PORTAL_URL: http://app:8000
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-before-deploying}
+    depends_on:
+      - app
+      - mcp-citizen
+      - mcp-officer
+    volumes:
+      - ./evals:/app/evals:ro
+      - ./tests:/app/tests:ro
+      - uploads:/var/sewasetu/uploads:ro
+
   scheduler:
     build: ./app
     # Run the deemed-approval job once at startup (so a freshly restored

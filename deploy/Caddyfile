@@ -1,0 +1,22 @@
+# HTTPS front door. Caddy gets and renews the certificate automatically.
+{$DOMAIN} {
+	encode gzip
+
+	@citizen path /mcp/citizen /mcp/citizen/*
+	handle @citizen {
+		reverse_proxy mcp-citizen:8101 {
+			flush_interval -1
+		}
+	}
+
+	@officer path /mcp/officer /mcp/officer/*
+	handle @officer {
+		reverse_proxy mcp-officer:8102 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy app:8000
+	}
+}

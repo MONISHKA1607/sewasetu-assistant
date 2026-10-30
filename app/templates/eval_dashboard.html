@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.pill{display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:bold;color:#fff}
+.ok{background:#1b7e3c}.bad{background:#b3261e}.crit{background:#7a0d08}
+details{border:1px solid #d7dbe0;margin:8px 0;padding:8px 12px;background:#fafbfc}
+summary{cursor:pointer;font-weight:bold}
+.kpi{display:inline-block;margin:0 22px 8px 0}.kpi b{font-size:26px;display:block}
+.small{font-size:12px;color:#555}
+pre{white-space:pre-wrap;word-break:break-word;background:#f4f4f4;padding:8px;font-size:12px;margin:4px 0}
+.say{margin:3px 0;font-size:13px}
+</style>
+<h2>Evaluation dashboard</h2>
+<p class="note">Invented citizens and officers play against the live assistants through a real MCP client. Pass or fail
+is decided only by what is then found in the portal's database: an assistant saying "submitted" counts for nothing
+unless the record exists. Bank numbers, one-time links, OTPs and tokens are never stored here.</p>
+
+{% if not runs %}
+<p><b>No evaluation run has been recorded yet.</b></p>
+{% else %}
+<div>
+  <span class="kpi"><b>{{ n_pass }}/{{ n_all }}</b>scenarios passed</span>
+  <span class="kpi"><b>{{ passed_checks }}/{{ total_checks }}</b>database/behaviour checks passed</span>
+  <span class="kpi"><b style="color:{{ '#b3261e' if critical_failed else '#1b7e3c' }}">{{ critical_failed }}</b>critical failures</span>
+</div>
+<p class="small">Showing run <b>{{ sel }}</b>. Filter:
+  <a href="?run={{ sel }}">all</a> |
+  <a href="?run={{ sel }}&role=citizen">citizen</a> |
+  <a href="?run={{ sel }}&role=officer">officer</a> |
+  <a href="?run={{ sel }}&only=failed">failed only</a> |
+  <a href="?run={{ sel }}&only=passed">passed only</a></p>
+
+{% for scenario, persona, r, goal, passed, cat, transcript, calls, checks, note, at, driver in rows %}
+<details {% if not passed %}open{% endif %}>
+  <summary>
+    <span class="pill {{ 'ok' if passed else 'bad' }}">{{ 'PASS' if passed else 'FAIL' }}</span>
+    {{ persona }} <span class="small">&middot; {{ r }} &middot; {{ scenario }}</span>
+  </summary>
+  <p><b>Goal:</b> {{ goal }}<br><span class="small">{{ note }} &middot; {{ driver }} driver &middot; {{ at.strftime('%d %b %Y %H:%M') }}</span></p>
+  {% if transcript %}<p class="small"><b>The conversation (scripted persona):</b></p>
+  {% for t in transcript %}<div class="say"><b>{{ t.who }}:</b> {{ t.text }}</div>{% endfor %}{% endif %}
+  <table class="tbl" style="margin-top:8px"><tr><th>What was checked in the portal</th><th></th><th>Found</th></tr>
+  {% for c in checks %}
+  <tr><td>{{ c.name }}{% if c.category == 'critical' %} <span class="small">(critical)</span>{% endif %}</td>
+      <td><span class="pill {{ 'ok' if c.passed else ('crit' if c.category == 'critical' else 'bad') }}">{{ 'pass' if c.passed else 'FAIL' }}</span></td>
+      <td class="small">{{ c.detail }}</td></tr>
+  {% endfor %}</table>
+  <details><summary class="small">Tool calls and results ({{ calls|length }})</summary>
+  {% for c in calls %}<pre>{{ c.tool }}({{ c.args | tojson }})  [{{ c.ms }} ms]
+&rarr; {{ c.result | tojson }}</pre>{% endfor %}</details>
+</details>
+{% endfor %}
+
+<h3>History</h3>
+<table class="tbl" style="max-width:640px"><tr><th>Run</th><th>When</th><th>Scenarios passed</th></tr>
+{% for rid, at, n, p in runs %}<tr><td><a href="?run={{ rid }}">{{ rid }}</a></td><td>{{ at.strftime('%d %b %Y %H:%M') }}</td><td>{{ p }}/{{ n }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+
+<h3>What building and testing this found (and what changed)</h3>
+{% for title, how, fix in findings %}
+<details><summary>{{ title }} <span class="small">&mdash; {{ how }}</span></summary><p>{{ fix }}</p></details>
+{% endfor %}
+
+<h3>Known limits, stated plainly</h3>
+<ul class="note">
+<li>The portal has one shared officer account, so decisions are attributed to <code>officer:admin</code>, not to an individual.</li>
+<li>The simulated SMS inbox (<code>/__gateway/</code>) is public by the portal's own design; it stands in for a telephone network.</li>
+<li>These runs use a scripted driver for repeatability. Language-model conversations are listed separately when present.</li>
+</ul>
+{% endblock %}

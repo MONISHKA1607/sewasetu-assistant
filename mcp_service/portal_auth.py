@@ -63,12 +63,7 @@ class PortalTokenVerifier:
             log.warning("TOKEN REJECTED at verification: %r", e)
             return None
         if claims.get("role") != self.role or claims.get("scope") != self.role:
-<<<<<<< HEAD
             log.warning("TOKEN REJECTED: role=%r scope=%r but this endpoint is %r", claims.get("role"), claims.get("scope"), self.role)
-=======
-            log.warning("TOKEN REJECTED: role=%r scope=%r but this endpoint is %r",
-                        claims.get("role"), claims.get("scope"), self.role)
->>>>>>> origin/main
             return None
         if not str(claims.get("sub", "")).startswith(self.role + ":"):
             log.warning("TOKEN REJECTED: subject %r is not a %s", claims.get("sub"), self.role)
@@ -84,11 +79,7 @@ class PortalTokenVerifier:
         except Exception:
             log.exception("revocation check failed; refusing token")
             return None
-<<<<<<< HEAD
         log.info("TOKEN VERIFIED sub=%s expires_in=%ss", claims.get("sub"), int(claims["exp"] - time.time()))
-=======
-        log.warning("TOKEN VERIFIED sub=%s expires_in=%ss", claims.get("sub"), int(claims["exp"] - time.time()))
->>>>>>> origin/main
         return AccessToken(token=token, client_id=claims.get("client_id", ""), scopes=[claims["scope"]],
                            expires_at=claims["exp"], resource=self.resource_url)
 
@@ -98,8 +89,4 @@ def subject_from_token(tok):
     try:
         return jwt.decode(tok.token, options={"verify_signature": False}).get("sub", "")
     except Exception:
-<<<<<<< HEAD
         return ""
-=======
-        return ""
->>>>>>> origin/main

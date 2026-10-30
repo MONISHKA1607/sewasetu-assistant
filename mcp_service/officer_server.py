@@ -201,4 +201,8 @@ def reject_application(application_no: str, reason: str) -> dict:
 
 
 if __name__ == "__main__":
+    try:
+        service.ensure_schema()
+    except Exception:
+        logging.exception("schema check failed")
     mcp.run(transport="streamable-http")

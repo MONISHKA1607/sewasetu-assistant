@@ -32,11 +32,15 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/var/sewasetu/uploads")
 mcp = FastMCP(
     "Sewa Setu - Citizen assistant",
     instructions=(
-        "You help ONE signed-in citizen apply for the Old Age Pension (Rs 250/month, age 60+) and "
-        "follow up on it. Start with get_scheme_info. Collect details with save_details (ask for "
-        "missing items in plain, simple words; use Hindi/Assamese/English as the person does). "
-        "Never invent details, never guess a document, never claim an application exists unless "
-        "submit_application or get_my_application_status returned an application number. "
+        "You help a person apply for the Old Age Pension (Rs 250/month; the APPLICANT must be 60 or older) and "
+        "follow up on an application. IMPORTANT: the signed-in phone number is only the contact number and the "
+        "login that holds the application. The applicant is very often SOMEONE ELSE - a grandmother, a parent, a "
+        "neighbour - and the person on the phone is a family member, a CSC operator or another helper. That is normal "
+        "and allowed: never ask the applicant to sign in, and never refuse because the person on the phone is not the "
+        "applicant. Ask for the APPLICANT's details. One phone number can hold only one active application at a time. "
+        "Start with get_scheme_info. Collect details with save_details (ask for missing items in plain, simple words; "
+        "use Hindi/Assamese/English as the person does). Never invent details, never guess a document, never claim an "
+        "application exists unless submit_application or get_my_application_status returned an application number. "
         "Do not promise payment dates."),
     token_verifier=PortalTokenVerifier(RESOURCE, "citizen"),
     auth=AuthSettings(issuer_url=ISSUER, resource_server_url=RESOURCE, required_scopes=["citizen"],
@@ -111,6 +115,14 @@ def _norm_marital(v):
     return m.get((v or "").strip().lower(), (v or "").strip())
 
 
+def _existing_note(ex):
+    return ("ALREADY HAS AN APPLICATION: %s (status %s). This phone already holds an active application, so a new one "
+            "cannot be made. Do NOT collect more details. Tell them the application number and status (use "
+            "get_my_application_status for the full explanation). If it is still PENDING and they want to correct a "
+            "mistake, offer withdraw_application, then apply afresh. To apply for a different person they need a "
+            "different phone number." % (ex[1], ex[2]))
+
+
 def _load_draft(cur, mobile):
     cur.execute("SELECT data, doc_path FROM agent_drafts WHERE mobile=%s", (mobile,))
     r = cur.fetchone()
@@ -164,10 +176,18 @@ def _problems_and_missing(d, doc_path):
 @mcp.tool()
 def get_scheme_info() -> dict:
     """Official, current rules of the Old Age Pension scheme and whether applications are open.
-    Call this first. Also tells you who is signed in (masked) so a shared-phone user can confirm."""
+    Call this first. Shows which phone number is signed in (masked) so a shared-phone user can confirm; that phone
+    holds the application but the applicant can be someone else."""
     m = _mobile()
-    return {
-        "signed_in_citizen": _mask(m),
+    conn = service.get_db(); cur = conn.cursor()
+    try:
+        ex = service.active_application(cur, m)
+    finally:
+        cur.close(); conn.close()
+    info = {
+        "signed_in_mobile": _mask(m),
+        "who_can_apply": "The signed-in phone is only the contact number and login for the application. The APPLICANT can be another person, such as a parent or grandparent, helped by a family member or CSC operator; this is normal and allowed. Do not ask the applicant to sign in. Only ONE active application can be held per phone number, so a "
+        "second person needs a different phone number.",
         "scheme": "Old Age Pension, Government of Purvanchal. Rs 250 per month by bank transfer (DBT).",
         "eligibility": "Resident of Purvanchal aged %d or above. One active application per person." % service.MIN_AGE,
         "application_window": _window(),
@@ -180,14 +200,18 @@ def get_scheme_info() -> dict:
         "next_step": "Ask whether they want to apply or check an existing application. To apply, ask for the "
                      "details and call save_details. To check, call get_my_application_status.",
     }
+    if ex:
+        info["existing_application"] = {"application_no": ex[1], "status": ex[2]}
+        info["next_step"] = _existing_note(ex)
+    return info
 
 
 @mcp.tool()
 def save_details(applicant_name: str = "", dob: str = "", gender: str = "", marital_status: str = "",
                  husband_name: str = "", village: str = "", block: str = "", bank_account: str = "",
                  ifsc: str = "") -> dict:
-    """Save or correct draft application details for the signed-in citizen. Send only what the citizen
-    actually told you; leave other fields empty. Calling with no arguments just shows the draft.
+    """Save or correct draft details of the APPLICANT (who may be a different person from the one on the phone,
+    e.g. a grandmother being helped by her grandson). Send only what you were actually told; leave other fields empty. Calling with no arguments just shows the draft.
     Drafts are kept on the server, so a broken conversation can be resumed. Returns what is still missing."""
     mobile = _mobile()
     conn = service.get_db(); cur = conn.cursor()
@@ -206,7 +230,10 @@ def save_details(applicant_name: str = "", dob: str = "", gender: str = "", mari
                         (mobile, Json(d), doc or None, datetime.now()))
             conn.commit()
         problems, missing, should = _problems_and_missing(d, doc)
-        blocking = any(p.startswith(("NOT ELIGIBLE", "assistant applications", "the application window"))
+        ex = service.active_application(cur, mobile)
+        if ex:
+            problems.insert(0, _existing_note(ex))
+        blocking = any(p.startswith(("ALREADY HAS", "NOT ELIGIBLE", "assistant applications", "the application window"))
                        for p in problems)
         if blocking:
             nxt = "STOP. Do not collect more details. Explain the first problem to the citizen kindly."
@@ -218,7 +245,7 @@ def save_details(applicant_name: str = "", dob: str = "", gender: str = "", mari
             nxt = ("Everything is ready. Read the details back to the citizen, read the declaration aloud "
                    "('I declare the information is true; false information is punishable and leads to cancellation "
                    "of pension'), and only after they agree call submit_application(declaration_confirmed=true).")
-        return {"signed_in_citizen": _mask(mobile), "draft": _draft_view(d, doc), "problems": problems,
+        return {"signed_in_mobile": _mask(mobile), "draft": _draft_view(d, doc), "problems": problems,
                 "missing": missing, "should_ask": should, "next_step": nxt}
     finally:
         cur.close(); conn.close()
@@ -321,10 +348,10 @@ def get_my_application_status() -> dict:
         r = cur.fetchone()
         if not r:
             d, doc = _load_draft(cur, mobile)
-            return {"signed_in_citizen": _mask(mobile), "has_application": False, "has_saved_draft": bool(d),
+            return {"signed_in_mobile": _mask(mobile), "has_application": False, "has_saved_draft": bool(d),
                     "next_step": "No application exists for this mobile number. Offer to help apply "
                                  "(get_scheme_info, then save_details)."}
-        out = {"signed_in_citizen": _mask(mobile), "has_application": True, "application_no": r[1],
+        out = {"signed_in_mobile": _mask(mobile), "has_application": True, "application_no": r[1],
                "applicant_name": r[2], "block": r[3], "status": r[4], "meaning": _STATUS_TEXT.get(r[4], r[4]),
                "submitted_on": r[5].strftime("%d %b %Y") if r[5] else None,
                "decided_on": r[6].strftime("%d %b %Y") if r[6] else None,

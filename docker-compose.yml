@@ -71,6 +71,10 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       PORTAL_URL: http://app:8000
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-before-deploying}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      PERSONA_MODEL: ${PERSONA_MODEL:-gemini-2.5-flash}
+      LLM_SPACING: ${LLM_SPACING:-4.5}
     depends_on:
       - app
       - mcp-citizen

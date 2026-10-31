@@ -613,6 +613,16 @@ EVAL_FINDINGS = [
      "session immediately (check: shared_kiosk)."),
     ("Application numbers were random with no uniqueness check", "found reading create_application",
      "Collision was possible with 100k rows. Fixed: unique index plus retry until unused."),
+    ("The assistant refused to help a grandson apply for his grandmother", "found by the first language-model conversation",
+     "Its instructions and result fields spoke of 'the signed-in citizen', so the model concluded the applicant had to "
+     "be the person on the phone and sent the family away. The portal never required that (the OTP phone holds the "
+     "application; the applicant can be anyone aged 60+). Fixed: instructions and tool text now say plainly that the phone is "
+     "the contact and the applicant is often a relative; the field is now 'signed_in_mobile'."),
+    ("A duplicate was only discovered at the last step, wasting a small model's whole turn budget", "found by the language-model run of Parvati's daughter",
+     "The assistant collected every detail, asked for an upload and tried to submit before learning an application already "
+     "existed: it used all 16 of its allowed model calls (the database was never at risk, the budget was). Fixed: "
+     "get_scheme_info and save_details now report an existing application in the very first call and tell the assistant to "
+     "stop collecting details."),
     ("Fresh database races the schema setup", "found on a clean deployment",
      "The portal tried its migration once, before the seed finished loading. Fixed: migration now retries until ready."),
 ]

@@ -78,7 +78,7 @@ class Run:
         return out
 
     def check(self, name, cond, detail="", cat="functional"):
-        self.checks.append({"name": name, "passed": bool(cond), "detail": str(detail)[:300], "category": cat})
+        self.checks.append({"name": name, "passed": bool(cond), "detail": str(detail)[:900], "category": cat})
         return bool(cond)
 
 
@@ -217,7 +217,11 @@ async def parvati(run):
         first = await apply_full(run, s, person("Parvati Devi", "20/05/1954", "Rangapani", "Sonari", "445566778899"))
     run.say("Daughter", "Mother needs the pension. Let me apply again with her number.")
     async with citizen(m) as (s2, tok2):
-        await run.call(s2, "save_details", **person("Parvati Devi", "20/05/1954", "Rangapani", "Sonari", "445566778899"))
+        info = await run.call(s2, "get_scheme_info")
+        run.check("the existing application is flagged in the very first call (saves a turn-limited model its budget)",
+                  info.get("existing_application", {}).get("application_no") == first.get("application_no"), info.get("existing_application"), "critical")
+        d0 = await run.call(s2, "save_details", **person("Parvati Devi", "20/05/1954", "Rangapani", "Sonari", "445566778899"))
+        run.check("save_details also stops the assistant early", any("ALREADY HAS" in x for x in d0.get("problems", [])), d0.get("problems", [""])[:1])
         await upload_doc(run, s2)
         await run.call(s2, "save_details", ifsc="SBIN0003077", gender="Female", marital_status="Widowed")
         second = await run.call(s2, "submit_application", declaration_confirmed=True)

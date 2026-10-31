@@ -37,7 +37,7 @@ unless the record exists. Bank numbers, one-time links, OTPs and tokens are neve
     {{ persona }} <span class="small">&middot; {{ r }} &middot; {{ scenario }}</span>
   </summary>
   <p><b>Goal:</b> {{ goal }}<br><span class="small">{{ note }} &middot; {{ driver }} driver &middot; {{ at.strftime('%d %b %Y %H:%M') }}</span></p>
-  {% if transcript %}<p class="small"><b>The conversation (scripted persona):</b></p>
+  {% if transcript %}<p class="small"><b>The conversation:</b></p>
   {% for t in transcript %}<div class="say"><b>{{ t.who }}:</b> {{ t.text }}</div>{% endfor %}{% endif %}
   <table class="tbl" style="margin-top:8px"><tr><th>What was checked in the portal</th><th></th><th>Found</th></tr>
   {% for c in checks %}
@@ -66,6 +66,6 @@ unless the record exists. Bank numbers, one-time links, OTPs and tokens are neve
 <ul class="note">
 <li>The portal has one shared officer account, so decisions are attributed to <code>officer:admin</code>, not to an individual.</li>
 <li>The simulated SMS inbox (<code>/__gateway/</code>) is public by the portal's own design; it stands in for a telephone network.</li>
-<li>These runs use a scripted driver for repeatability. Language-model conversations are listed separately when present.</li>
+<li><b>scripted</b> runs repeat fixed steps; <b>gemini</b> runs are free-form conversations where one model plays the citizen and another plays the assistant with only the real tools, under a limit on model calls. The reviewers' own model and client will differ.</li>
 </ul>
 {% endblock %}

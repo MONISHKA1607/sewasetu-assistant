@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "tests"))
 sys.path.insert(0, os.environ.get("SERVICE_DIR", "/app"))
 import service
 from oauth_helper import sign_in, BASE, PORTAL
+from sample_docs import valid_pdf
 from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 
@@ -113,7 +114,7 @@ def http_status(url, token):
 async def upload_doc(run, s):
     res = await run.call(s, "get_document_upload_link")
     link = re.sub(r"^https?://[^/]+", PORTAL, res.get("upload_link", ""))
-    r = requests.post(link, files={"document": ("age_proof.pdf", b"%PDF-1.4\n% eval age proof\n", "application/pdf")}, timeout=30)
+    r = requests.post(link, files={"document": ("age_proof.pdf", valid_pdf(), "application/pdf")}, timeout=30)
     return r.status_code
 
 

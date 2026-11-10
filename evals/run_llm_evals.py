@@ -152,7 +152,7 @@ async def converse(run, s, instructions, tools, p, who):
                 out = await run.call(s, fc["name"], **(fc.get("args") or {}))
                 if fc["name"] == "get_document_upload_link" and p.get("has_document") and out.get("upload_link"):
                     link = re.sub(r"^https?://[^/]+", E.PORTAL, out["upload_link"])
-                    requests.post(link, files={"document": ("age_proof.pdf", b"%PDF-1.4\n% eval age proof\n", "application/pdf")}, timeout=30)
+                    requests.post(link, files={"document": ("age_proof.pdf", E.valid_pdf(), "application/pdf")}, timeout=30)
                     run.say("(system)", "The citizen opened the link on their phone and uploaded their certificate.")
                 resp.append({"functionResponse": {"name": fc["name"], "response": {"result": out}}})
             contents.append({"role": "user", "parts": resp})

@@ -12,6 +12,7 @@ import io
 import re
 import random
 import hashlib
+import secrets
 import configparser
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
@@ -21,6 +22,7 @@ IST = ZoneInfo("Asia/Kolkata")
 
 import requests
 import psycopg2
+from docs import validate_document, MAX_BYTES as MAX_UPLOAD_BYTES
 from service import (ACTIVE_STATUSES, BLOCKS, SCHEME_DEADLINE, MIN_AGE, SLA_DAYS, parse_dob,
                      age_on, validate_application, active_application, create_application,
                      submit_application, decide_application, deadline_remaining, hash_password,
@@ -80,6 +82,18 @@ def send_sms(mobile, text):
 # ---------------------------------------------------------------------------
 # Public pages
 # ---------------------------------------------------------------------------
+
+@app.context_processor
+def _demo_banner():
+    """Honesty about a changed deadline: if the window was moved for a demonstration, every page says so."""
+    import service as _svc
+    if _svc.SCHEME_DEADLINE_OVERRIDE:
+        return {"demo_notice": "DEMONSTRATION DEPLOYMENT: the application window is set to %s for the demo. "
+                               "The configured scheme deadline is %s."
+                               % (_svc.SCHEME_DEADLINE.strftime("%d %b %Y %H:%M"),
+                                  _svc.SCHEME_DEADLINE_CONFIGURED.strftime("%d %b %Y %H:%M"))}
+    return {}
+
 
 @app.route("/")
 def index():
@@ -331,36 +345,48 @@ def agent_upload(token):
     masked = "XXXXXX" + mobile[-4:]
     if request.method == "POST":
         f = request.files.get("document")
-        err = None
-        content = b""
-        ext = ""
         if f is None or not f.filename:
-            err = "Please choose a file."
-        else:
-            ext = f.filename.lower().rsplit(".", 1)[-1]
-            content = f.read()
-            if ext not in _MAGIC:
-                err = "Please upload a JPG, PNG or PDF file."
-            elif len(content) > 5 * 1024 * 1024:
-                err = "File is larger than 5 MB. Please upload a smaller file."
-            elif not any(content.startswith(m) for m in _MAGIC[ext]):
-                err = "This file does not look like a real %s." % ext.upper()
-        if err:
             cur.close(); conn.close()
-            return render_template("agent_upload.html", mobile=masked, done=False, error=err), 400
-        os.makedirs(os.path.join(UPLOAD_DIR, "agent"), exist_ok=True)
-        path = os.path.join(UPLOAD_DIR, "agent", "%s_%d.%s" % (mobile, int(datetime.now().timestamp()), ext))
-        with open(path, "wb") as out:
-            out.write(content)
-        cur.execute("INSERT INTO agent_drafts (mobile, data, doc_path, updated_at) VALUES (%s, '{}', %s, %s) "
-                    "ON CONFLICT (mobile) DO UPDATE SET doc_path = EXCLUDED.doc_path, updated_at = EXCLUDED.updated_at",
-                    (mobile, path, datetime.now()))
-        cur.execute("UPDATE upload_tokens SET used_at = %s WHERE token_hash = %s",
-                    (datetime.now(), hashlib.sha256(token.encode()).hexdigest()))
-        conn.commit(); cur.close(); conn.close()
+            return render_template("agent_upload.html", mobile=masked, done=False, error="Please choose a file."), 400
+        content = f.read(MAX_UPLOAD_BYTES + 1)
+        ok, ext, msg = validate_document(f.filename, content)
+        if not ok:
+            # a rejected file changes nothing: the link stays usable and any saved draft is untouched
+            cur.close(); conn.close()
+            return render_template("agent_upload.html", mobile=masked, done=False, error=msg), 400
+        folder = os.path.join(UPLOAD_DIR, "agent")
+        os.makedirs(folder, exist_ok=True)
+        stamp = "%d_%s" % (int(datetime.now().timestamp()), secrets.token_hex(4))
+        path = os.path.join(folder, "%s_%s.%s" % (mobile, stamp, ext))
+        tmp = path + ".part"
+        try:
+            with open(tmp, "wb") as out:
+                out.write(content)
+                out.flush(); os.fsync(out.fileno())
+            os.replace(tmp, path)                      # the final file appears whole or not at all
+            cur.execute("INSERT INTO agent_drafts (mobile, data, doc_path, updated_at) VALUES (%s, '{}', %s, %s) "
+                        "ON CONFLICT (mobile) DO UPDATE SET doc_path = EXCLUDED.doc_path, updated_at = EXCLUDED.updated_at",
+                        (mobile, path, datetime.now()))
+            cur.execute("UPDATE upload_tokens SET used_at = %s WHERE token_hash = %s AND used_at IS NULL",
+                        (datetime.now(), hashlib.sha256(token.encode()).hexdigest()))
+            if cur.rowcount != 1:                       # another request consumed the link first
+                raise RuntimeError("upload link already used")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            for leftover in (tmp, path):                # never leave an orphan file behind
+                try:
+                    os.remove(leftover)
+                except OSError:
+                    pass
+            cur.close(); conn.close()
+            return render_template("agent_upload.html", mobile=masked, done=False,
+                                   error="The upload could not be saved. Please ask your assistant for a new link."), 500
+        cur.close(); conn.close()
         return render_template("agent_upload.html", mobile=masked, done=True, error=None)
     cur.close(); conn.close()
     return render_template("agent_upload.html", mobile=masked, done=False, error=None)
+
 
 # ---------------------------------------------------------------------------
 # Status portal (citizen login)
@@ -623,6 +649,12 @@ EVAL_FINDINGS = [
      "existed: it used all 16 of its allowed model calls (the database was never at risk, the budget was). Fixed: "
      "get_scheme_info and save_details now report an existing application in the very first call and tell the assistant to "
      "stop collecting details."),
+    ("Upload check only looked at the first bytes of a file", "found while inspecting a demo upload",
+     "A 26-byte placeholder starting with '%PDF' was accepted and reported as 'uploaded' (my own test tools sent it). "
+     "A file's first bytes only show what it claims to be. Fixed: uploads are now parsed (PDF structure and first page; "
+     "JPEG/PNG fully decoded and checked against the file extension), written atomically, and rejected files leave the "
+     "link and any saved draft untouched. Not claimed: that the document is genuine or matches the applicant - that "
+     "still needs the officer or document verification."),
     ("Fresh database races the schema setup", "found on a clean deployment",
      "The portal tried its migration once, before the seed finished loading. Fixed: migration now retries until ready."),
 ]
